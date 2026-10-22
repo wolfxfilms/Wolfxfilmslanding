@@ -3,11 +3,19 @@ import { useLanguage } from '../lib/store';
 
 export default function Hero() {
   const { t } = useLanguage();
-  const [isPlayingIntro, setIsPlayingIntro] = useState(false);
+  const [introActive, setIntroActive] = useState(false);
   const heroVideoRef = useRef<HTMLVideoElement>(null);
   const introVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    // WebKit/Safari requires setting muted property directly on DOM element for autoplay
+    if (heroVideoRef.current) {
+      heroVideoRef.current.muted = true;
+      heroVideoRef.current.play().catch(() => {
+        // Fallback to poster if autoplay is blocked by browser
+      });
+    }
+
     let seen = false;
     try {
       seen = sessionStorage.getItem('wxf-intro') === '1';
@@ -15,57 +23,61 @@ export default function Hero() {
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    // Only attempt intro video if not seen and not reduced motion
     if (!seen && !reducedMotion && introVideoRef.current) {
-      setIsPlayingIntro(true);
+      introVideoRef.current.muted = true;
       const pr = introVideoRef.current.play();
-      if (pr && pr.catch) {
-        pr.catch(() => endIntro());
+      if (pr) {
+        pr.then(() => {
+          setIntroActive(true);
+        }).catch(() => {
+          endIntro();
+        });
       }
-      const timer = setTimeout(() => {
-        if (introVideoRef.current && introVideoRef.current.currentTime < 0.1) {
+
+      // Safeguard: if intro doesn't start within 2 seconds, switch to hero loop immediately
+      const safeguard = setTimeout(() => {
+        if (!introVideoRef.current || introVideoRef.current.currentTime < 0.2) {
           endIntro();
         }
-      }, 3000);
-      return () => clearTimeout(timer);
-    } else {
-      startLoop();
+      }, 2000);
+
+      return () => clearTimeout(safeguard);
     }
   }, []);
 
-  const startLoop = () => {
-    if (heroVideoRef.current) {
-      const pr = heroVideoRef.current.play();
-      if (pr && pr.catch) pr.catch(() => {});
-    }
-  };
-
   const endIntro = () => {
-    setIsPlayingIntro(false);
+    setIntroActive(false);
     try {
       sessionStorage.setItem('wxf-intro', '1');
     } catch (e) {}
-    startLoop();
+    if (heroVideoRef.current) {
+      heroVideoRef.current.muted = true;
+      heroVideoRef.current.play().catch(() => {});
+    }
   };
 
   return (
     <header className="hero" style={{ position: 'relative' }}>
-      <div className="hero-video" style={{
-        position: 'relative',
-        width: '100%',
-        aspectRatio: '16 / 9',
-        maxHeight: '94vh',
-        marginTop: '-64px',
-        overflow: 'hidden'
-      }}>
-        {/* Main looping background video */}
-        <video
-          ref={heroVideoRef}
-          muted
-          loop
-          playsInline
-          preload="auto"
-          poster="/img/hero.jpg"
-          aria-label="WolfxFilms title over a two-camera podcast set above Medellín at night"
+      <div
+        className="hero-video"
+        style={{
+          position: 'relative',
+          width: '100%',
+          aspectRatio: '16 / 9',
+          maxHeight: '94vh',
+          marginTop: '-64px',
+          overflow: 'hidden',
+          backgroundColor: '#000',
+          backgroundImage: 'url(/img/hero.jpg)',
+          backgroundPosition: 'center',
+          backgroundSize: 'cover'
+        }}
+      >
+        {/* Instant fallback photo behind video to guarantee NO black void */}
+        <img
+          src="/img/hero.jpg"
+          alt="WolfxFilms Penthouse Podcast Studio"
           style={{
             position: 'absolute',
             inset: 0,
@@ -74,14 +86,36 @@ export default function Hero() {
             objectFit: 'cover',
             WebkitMaskImage: 'linear-gradient(180deg, transparent 0%, #000 14%, #000 60%, transparent 96%)',
             maskImage: 'linear-gradient(180deg, transparent 0%, #000 14%, #000 60%, transparent 96%)',
-            opacity: isPlayingIntro ? 0 : 1,
-            transition: 'opacity 0.8s ease'
+            zIndex: 0
+          }}
+        />
+
+        {/* Main looping background video */}
+        <video
+          ref={heroVideoRef}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          poster="/img/hero.jpg"
+          aria-label="WolfxFilms podcast set above Medellín at night"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            WebkitMaskImage: 'linear-gradient(180deg, transparent 0%, #000 14%, #000 60%, transparent 96%)',
+            maskImage: 'linear-gradient(180deg, transparent 0%, #000 14%, #000 60%, transparent 96%)',
+            zIndex: 1,
+            opacity: 1
           }}
         >
           <source src="/img/hero.mp4" type="video/mp4" />
         </video>
 
-        {/* Intro sequence video */}
+        {/* Optional intro sequence video on top */}
         <video
           ref={introVideoRef}
           muted
@@ -98,27 +132,26 @@ export default function Hero() {
             objectFit: 'cover',
             WebkitMaskImage: 'linear-gradient(180deg, transparent 0%, #000 14%, #000 60%, transparent 96%)',
             maskImage: 'linear-gradient(180deg, transparent 0%, #000 14%, #000 60%, transparent 96%)',
-            opacity: isPlayingIntro ? 1 : 0,
-            pointerEvents: isPlayingIntro ? 'auto' : 'none',
-            transition: 'opacity 0.6s ease'
+            zIndex: 2,
+            opacity: introActive ? 1 : 0,
+            pointerEvents: introActive ? 'auto' : 'none',
+            transition: 'opacity 0.8s ease'
           }}
         >
           <source src="/img/intro.mp4" type="video/mp4" />
         </video>
 
         {/* City skyline glints */}
-        {!isPlayingIntro && (
-          <div className="glints" aria-hidden="true" style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}>
-            <i style={{ position: 'absolute', left: '19.7%', top: '92%', width: '60px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
-            <i style={{ position: 'absolute', left: '39.1%', top: '94%', width: '48px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
-            <i style={{ position: 'absolute', left: '59.4%', top: '94%', width: '54px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
-            <i style={{ position: 'absolute', left: '40%', top: '69.5%', width: '36px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
-            <i style={{ position: 'absolute', left: '56.2%', top: '69.5%', width: '40px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
-          </div>
-        )}
+        <div className="glints" aria-hidden="true" style={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}>
+          <i style={{ position: 'absolute', left: '19.7%', top: '92%', width: '60px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
+          <i style={{ position: 'absolute', left: '39.1%', top: '94%', width: '48px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
+          <i style={{ position: 'absolute', left: '59.4%', top: '94%', width: '54px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
+          <i style={{ position: 'absolute', left: '40%', top: '69.5%', width: '36px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
+          <i style={{ position: 'absolute', left: '56.2%', top: '69.5%', width: '40px', aspectRatio: '1', mixBlendMode: 'screen', background: 'radial-gradient(circle, #fff 0 3%, #fff7e8aa 6%, transparent 22%)' }} />
+        </div>
 
         {/* Skip intro button */}
-        {isPlayingIntro && (
+        {introActive && (
           <button
             type="button"
             className="pill gb"
@@ -138,7 +171,7 @@ export default function Hero() {
 
       <div className="wrap hero-card" style={{
         position: 'relative',
-        zIndex: 3,
+        zIndex: 5,
         marginTop: 'clamp(-260px, -17vw, -60px)',
         display: 'grid',
         justifyItems: 'center',
@@ -146,7 +179,7 @@ export default function Hero() {
         textAlign: 'center'
       }}>
         <h1 style={{
-          textShadow: '0 2px 30px rgba(0,0,0,0.6)',
+          textShadow: '0 2px 30px rgba(0,0,0,0.8)',
           fontSize: 'clamp(32px, 4.4vw, 64px)',
           lineHeight: 1.02,
           letterSpacing: '-0.04em',
