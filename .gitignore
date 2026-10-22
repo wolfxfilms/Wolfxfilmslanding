@@ -21,7 +21,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Reference backup
+# Reference backup (only root folder)
 reference.html
 legacy-index.html
-img/
+/img/
